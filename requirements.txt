@@ -1,0 +1,17 @@
+awswrangler==3.16.1
+boto3==1.43.34
+botocore==1.43.34
+jmespath==1.1.0
+numpy==2.4.6
+packaging==26.2
+pandas==3.0.3
+pyarrow==24.0.0
+python-dateutil==2.9.0.post0
+python-dotenv==1.2.2
+PyYAML==6.0.3
+s3transfer==0.19.0
+setuptools==82.0.1
+six==1.17.0
+typing_extensions==4.15.0
+tzdata==2026.2
+urllib3==2.7.0
