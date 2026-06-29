@@ -1,0 +1,29 @@
+# Ambiente virtual
+.venv/
+venv/
+
+# Credenciais e configs locais
+.env
+*.env
+configs/settings.yaml
+*.json
+*.pem
+*.key
+
+# Cache Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Arquivos locais/temporários
+data/
+tmp/
+logs/
+
+# Sistema operacional/IDE
+.DS_Store
+Thumbs.db
+.vscode/settings.json

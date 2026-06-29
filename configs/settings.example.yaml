@@ -1,0 +1,14 @@
+project:
+  name: "tech-challenge-fase2"
+  environment: "dev"
+
+aws:
+  region: "us-east-1"
+  bucket: "bucket-s3-aqui"
+
+google:
+  billing_project_id: "project-id-google-aqui"
+
+bronze:
+  base_path: "bronze"
+  database_name: "bronze"
