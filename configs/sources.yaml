@@ -1,0 +1,30 @@
+sources:
+  uf:
+    dataset_id: "br_inep_avaliacao_alfabetizacao"
+    table_id: "uf"
+    target_name: "uf"
+
+  alunos:
+    dataset_id: "br_inep_avaliacao_alfabetizacao"
+    table_id: "alunos"
+    target_name: "alunos"
+
+  municipio:
+    dataset_id: "br_inep_avaliacao_alfabetizacao"
+    table_id: "municipio"
+    target_name: "municipio"
+
+  meta_alfabetizacao_brasil:
+    dataset_id: "br_inep_avaliacao_alfabetizacao"
+    table_id: "meta_alfabetizacao_brasil"
+    target_name: "meta_alfabetizacao_brasil"
+
+  meta_alfabetizacao_uf:
+    dataset_id: "br_inep_avaliacao_alfabetizacao"
+    table_id: "meta_alfabetizacao_uf"
+    target_name: "meta_alfabetizacao_uf"
+
+  meta_alfabetizacao_municipio:
+    dataset_id: "br_inep_avaliacao_alfabetizacao"
+    table_id: "meta_alfabetizacao_municipio"
+    target_name: "meta_alfabetizacao_municipio"
