@@ -30,7 +30,7 @@ tech-challenge-fase2/
 │   │   ├── 03_silver_meta_brasil.sql
 │   │   ├── 04_silver_meta_uf.sql
 │   │   ├── 05_silver_meta_municipio.sql
-│   │   └── 06_silver_indicador_integrado.sql
+│   │   └── 06_silver_meta_brasil.sql
 │   │
 │   └── gold/
 │       ├── 01_gold_metas_vs_resultados_municipio.sql
