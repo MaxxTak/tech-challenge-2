@@ -45,6 +45,11 @@ bronze_com_flags AS (
         END AS flag_id_municipio_valido,
 
         CASE
+            WHEN id_aluno IS NOT NULL THEN true
+            ELSE false
+        END AS flag_id_aluno_preenchido,
+
+        CASE
             WHEN presenca IN (0, 1) THEN true
             ELSE false
         END AS flag_presenca_valida,
@@ -116,6 +121,7 @@ SELECT
     peso_aluno,
 
     flag_id_municipio_valido,
+    flag_id_aluno_preenchido,
     flag_presenca_valida,
     flag_preenchimento_caderno_valido,
     flag_alfabetizado_valido,
