@@ -1,0 +1,77 @@
+services:
+    zookeeper:
+        image: confluentinc/cp-zookeeper:7.0.1
+        container_name: zookeeper
+        healthcheck:
+            test: [ "CMD", "bash", "-c", "echo mntr | nc zookeeper 2185" ]
+            interval: 1s
+            timeout: 5s
+            retries: 10
+        environment:
+            ZOOKEEPER_CLIENT_PORT: 2185
+            ZOOKEEPER_TICK_TIME: 2000
+        networks:
+            - tech2
+
+    broker:
+        container_name: broker
+        image: confluentinc/cp-kafka:7.0.1
+        restart: always
+        ports:
+            - "9092:9092"
+        depends_on:
+            zookeeper:
+                condition: service_healthy
+        environment:
+            KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2185"
+            KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+            KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_INTERNAL://0.0.0.0:29092
+            KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://broker:29092
+            KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+            KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+            KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+            KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+        command: >
+            bash -c "
+            /etc/confluent/docker/run &
+            sleep 10 &&
+            kafka-topics --create --if-not-exists --bootstrap-server localhost:9092 --replication-factor 1 --partitions 2 --topic tech-challenge.events &&
+            wait
+            "
+        networks:
+            - tech2
+
+    kafka-ui:
+        image: provectuslabs/kafka-ui:latest
+        container_name: kafka-ui
+        ports:
+            - "8082:8080"
+        environment:
+            - KAFKA_CLUSTERS_0_NAME=local
+            - KAFKA_CLUSTERS_0_BOOTSTRAP_SERVERS=broker:29092
+        networks:
+            - tech2
+    database:
+        image: mysql
+        container_name: db
+        restart: unless-stopped
+        tty: true
+        ports:
+            - "3306:3306"
+        environment:
+            MYSQL_DATABASE: tech
+            MYSQL_ROOT_PASSWORD: password
+            SERVICE_TAGS: dev
+            SERVICE_NAME: mysql
+        volumes:
+            - ./.docker/mysql/db_data_challenge:/var/lib/mysql
+            - ./.docker/mysql/my.cnf:/etc/mysql/my.cnf
+        networks:
+            - tech2
+
+volumes:
+    db_data_challenge:
+
+networks:
+    tech2:
+        driver: bridge
