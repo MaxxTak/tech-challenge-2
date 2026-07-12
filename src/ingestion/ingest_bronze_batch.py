@@ -1,19 +1,57 @@
 import argparse
 import logging
+import os
 import sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
-import awswrangler as wr
-import basedosdados as bd
-import pandas as pd
+from dotenv import load_dotenv, find_dotenv
 
 # Permite importar src/utils/config.py mesmo rodando o script pela raiz do projeto
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(PROJECT_ROOT))
 
-from src.utils.config import load_yaml
+# Load .env first — must happen before boto3 so env vars are available.
+load_dotenv(find_dotenv())
+
+# AWS_VERIFY_SSL=false disables SSL cert verification (useful on Windows dev
+# environments where the system CA is not in certifi's bundle).
+# Botocore builds its own urllib3 PoolManager with an explicit ssl_context,
+# so we must patch BotocoreHTTPSession directly — ssl._create_default_https_context
+# is NOT respected by botocore.
+_verify_ssl = os.getenv("AWS_VERIFY_SSL", "true").lower() not in ("false", "0", "no")
+
+import botocore.httpsession  # noqa: E402
+
+if not _verify_ssl:
+    import urllib3  # noqa: E402
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    _orig_botocore_http_init = botocore.httpsession.URLLib3Session.__init__
+
+    def _botocore_no_ssl_verify(self, *args, **kwargs):
+        kwargs["verify"] = False
+        _orig_botocore_http_init(self, *args, **kwargs)
+
+    botocore.httpsession.URLLib3Session.__init__ = _botocore_no_ssl_verify
+
+import awswrangler as wr  # noqa: E402
+import boto3              # noqa: E402
+import pandas as pd       # noqa: E402
+
+from src.utils.config import load_yaml  # noqa: E402
+
+# Configure boto3 session for awswrangler — explicit credentials ensure the
+# session works both locally (via .env) and inside Docker containers.
+# aws_session_token is required when using temporary STS credentials (ASIA* keys).
+boto3.setup_default_session(
+    region_name=os.getenv("AWS_REGION", "us-east-1"),
+    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID") or None,
+    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY") or None,
+    aws_session_token=os.getenv("AWS_SESSION_TOKEN") or None,
+)
+
 
 
 # Logs
@@ -25,6 +63,42 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Funções auxiliares
+
+def read_source_from_csv(
+    csv_path: str,
+    limit: int | None = None,
+) -> pd.DataFrame:
+    """
+    Lê uma tabela a partir de um arquivo CSV local.
+
+    Parameters
+    ----------
+    csv_path : str
+        Caminho para o arquivo CSV (absoluto ou relativo à raiz do projeto).
+
+    limit : int | None
+        Limite de linhas para desenvolvimento. Use None para carga completa.
+
+    Returns
+    -------
+    pd.DataFrame
+        Dados lidos do CSV.
+    """
+
+    resolved = Path(csv_path) if Path(csv_path).is_absolute() else PROJECT_ROOT / csv_path
+
+    logger.info("Lendo fonte CSV: %s | limit=%s", resolved, limit)
+
+    df = pd.read_csv(resolved, nrows=limit)
+
+    logger.info(
+        "Fonte CSV lida com sucesso: rows=%s | columns=%s",
+        len(df),
+        len(df.columns),
+    )
+
+    return df
+
 
 def read_source_from_basedosdados(
     dataset_id: str,
@@ -56,6 +130,13 @@ def read_source_from_basedosdados(
     pd.DataFrame
         Dados lidos da fonte.
     """
+    try:
+        import basedosdados as bd
+    except ImportError:
+        raise ImportError(
+            "O pacote 'basedosdados' não está instalado. "
+            "Instale-o ou configure 'csv_path' na source para usar CSV local."
+        )
 
     logger.info(
         "Lendo fonte Base dos Dados: dataset_id=%s | table_id=%s | limit=%s",
@@ -229,19 +310,20 @@ def ingest_single_source(
 ) -> None:
     """
     Executa a ingestão Bronze de uma única fonte configurada no sources.yaml.
+
+    Se a source definir 'csv_path', lê de um arquivo CSV local.
+    Caso contrário, lê da Base dos Dados via BigQuery.
     """
 
     dataset_id = source_config["dataset_id"]
     table_id = source_config["table_id"]
     target_name = source_config["target_name"]
-
-    billing_project_id = settings["google"]["billing_project_id"]
+    csv_path = source_config.get("csv_path")
 
     bucket = settings["aws"]["bucket"]
     environment = settings["project"]["environment"]
     bronze_base_path = settings["bronze"]["base_path"]
     bronze_database_name = settings["bronze"]["database_name"]
-
 
     if environment == "dev" and limit is None:
         limit = 1000
@@ -258,12 +340,18 @@ def ingest_single_source(
     logger.info("Iniciando ingestão da fonte: %s", source_name)
     logger.info("Destino Bronze: %s", s3_path)
 
-    df = read_source_from_basedosdados(
-        dataset_id=dataset_id,
-        table_id=table_id,
-        billing_project_id=billing_project_id,
-        limit=limit,
-    )
+    if csv_path:
+        # Lê de arquivo CSV local — não requer credenciais Google/BigQuery
+        df = read_source_from_csv(csv_path=csv_path, limit=limit)
+    else:
+        # Lê da Base dos Dados via BigQuery
+        billing_project_id = settings["google"]["billing_project_id"]
+        df = read_source_from_basedosdados(
+            dataset_id=dataset_id,
+            table_id=table_id,
+            billing_project_id=billing_project_id,
+            limit=limit,
+        )
 
     df = add_bronze_metadata(
         df=df,

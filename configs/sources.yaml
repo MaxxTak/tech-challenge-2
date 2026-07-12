@@ -3,6 +3,7 @@ sources:
     dataset_id: "br_inep_avaliacao_alfabetizacao"
     table_id: "uf"
     target_name: "uf"
+    csv_path: "br_inep_avaliacao_alfabetizacao_uf.csv"  # local CSV; remove to use BigQuery
 
   alunos:
     dataset_id: "br_inep_avaliacao_alfabetizacao"

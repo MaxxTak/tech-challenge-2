@@ -3,15 +3,37 @@ import json
 import time
 from datetime import datetime, timezone, timedelta
 
-import awswrangler as wr
-import boto3
-import pandas as pd
-import pymysql
 from dotenv import load_dotenv, find_dotenv
-from kafka import KafkaConsumer
 
-# Load .env file if present (useful for local development outside Docker)
+# Load .env first — must happen before boto3 so env vars are available.
 load_dotenv(find_dotenv())
+
+# AWS_VERIFY_SSL=false disables SSL cert verification (useful on Windows dev
+# environments where the system CA is not in certifi's bundle).
+# Botocore builds its own urllib3 PoolManager with an explicit ssl_context,
+# so we must patch BotocoreHTTPSession directly — ssl._create_default_https_context
+# is NOT respected by botocore.
+_verify_ssl = os.getenv("AWS_VERIFY_SSL", "true").lower() not in ("false", "0", "no")
+
+import botocore.httpsession  # noqa: E402
+
+if not _verify_ssl:
+    import urllib3  # noqa: E402
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    _orig_botocore_http_init = botocore.httpsession.URLLib3Session.__init__
+
+    def _botocore_no_ssl_verify(self, *args, **kwargs):
+        kwargs["verify"] = False
+        _orig_botocore_http_init(self, *args, **kwargs)
+
+    botocore.httpsession.URLLib3Session.__init__ = _botocore_no_ssl_verify
+
+import awswrangler as wr  # noqa: E402
+import boto3              # noqa: E402
+import pandas as pd       # noqa: E402
+import pymysql            # noqa: E402
+from kafka import KafkaConsumer  # noqa: E402
 
 # Get Kafka connection settings
 bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
@@ -32,6 +54,9 @@ aws_bucket = os.getenv("AWS_BUCKET", "")
 project_environment = os.getenv("PROJECT_ENVIRONMENT", "dev")
 bronze_base_path = os.getenv("BRONZE_BASE_PATH", "bronze")
 bronze_target_name = os.getenv("BRONZE_TARGET_NAME", "uf")
+# Glue Data Catalog settings (optional — mirrors --register-catalog in the batch pipeline)
+bronze_database_name = os.getenv("BRONZE_DATABASE_NAME", "bronze")
+register_catalog = os.getenv("REGISTER_CATALOG", "false").lower() in ("true", "1", "yes")
 
 # S3 path follows the same convention as the batch pipeline:
 # s3://{bucket}/{environment}/{bronze_base_path}/{target_name}/
@@ -41,11 +66,14 @@ s3_bronze_path = (
 
 # Configure boto3 session for awswrangler — explicit credentials ensure the
 # session works both locally (via .env) and inside Docker containers.
+# aws_session_token is required when using temporary STS credentials (ASIA* keys).
 boto3.setup_default_session(
     region_name=aws_region,
     aws_access_key_id=aws_access_key_id or None,
     aws_secret_access_key=aws_secret_access_key or None,
+    aws_session_token=os.getenv("AWS_SESSION_TOKEN") or None,
 )
+
 
 def deserialize_value(value):
     if value is None:
@@ -62,13 +90,98 @@ def validate_event(event_data):
     return all(event_data.get(field) is not None for field in required_fields)
 
 
+# Natural key used to deduplicate when merging new events with existing data.
+_NATURAL_KEY = ["ano", "sigla_uf", "serie", "rede"]
+
+
+def read_existing_bronze(path: str) -> pd.DataFrame | None:
+    """
+    Lê o dataset Bronze existente no S3.
+
+    Returns None if the path does not exist yet (first run).
+    """
+    try:
+        existing = wr.s3.read_parquet(path=path, dataset=True)
+        print(f"Read {len(existing)} existing rows from {path}")
+        return existing
+    except Exception:
+        # Path doesn't exist yet or is empty — fresh start
+        return None
+
+
+def merge_event_into_dataset(
+    existing_df: pd.DataFrame | None,
+    new_row: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Merges the new Kafka row into the existing dataset.
+
+    If a row with the same natural key (ano + sigla_uf + serie + rede) already
+    exists, the incoming event overwrites it. New rows are simply appended.
+    """
+    if existing_df is None or existing_df.empty:
+        return new_row
+
+    # Build a boolean mask of rows that share the same natural key as the new row
+    mask = pd.Series([True] * len(existing_df), index=existing_df.index)
+    for col in _NATURAL_KEY:
+        if col in new_row.columns and col in existing_df.columns:
+            mask = mask & (existing_df[col] == new_row[col].iloc[0])
+
+    deduplicated = existing_df[~mask]
+    merged = pd.concat([deduplicated, new_row], ignore_index=True)
+    print(
+        f"Merged: {len(existing_df)} existing + 1 new → {len(merged)} rows "
+        f"(replaced {int(mask.sum())} duplicate(s))"
+    )
+    return merged
+
+
+def write_bronze_to_s3(df: pd.DataFrame, path: str) -> None:
+    """
+    Saves the full merged DataFrame back to S3 as a partitioned Parquet dataset.
+
+    Mirrors write_bronze_parquet_to_s3() from the batch pipeline:
+      - mode='overwrite'   — full replace, consistent with batch behaviour
+      - partition_cols     — partitioned by _ingestion_date
+      - register_catalog   — optionally registers/updates the Glue table
+    """
+    if register_catalog:
+        print(
+            f"Writing Parquet + registering Glue table: "
+            f"database={bronze_database_name} | table={bronze_target_name}"
+        )
+        wr.s3.to_parquet(
+            df=df,
+            path=path,
+            dataset=True,
+            mode="overwrite",
+            partition_cols=["_ingestion_date"],
+            compression="snappy",
+            database=bronze_database_name,
+            table=bronze_target_name,
+        )
+    else:
+        wr.s3.to_parquet(
+            df=df,
+            path=path,
+            dataset=True,
+            mode="overwrite",
+            partition_cols=["_ingestion_date"],
+            compression="snappy",
+        )
+
+
 def append_event_to_s3_bronze(event_data: dict, kafka_offset: int) -> None:
     """
-    Appends a single streaming event to the Bronze parquet dataset in S3.
+    Merges a single streaming event into the Bronze Parquet dataset in S3.
 
-    Mirrors the schema and metadata conventions of the batch pipeline
-    (ingest_bronze_batch.py), using mode='append' so existing partitions
-    are preserved. The row is partitioned by _ingestion_date.
+    Workflow (mirrors the batch pipeline convention):
+      1. Read the existing dataset from S3 (if any).
+      2. Build the new row with Bronze metadata.
+      3. Merge: deduplicate on natural key (ano+sigla_uf+serie+rede), then concat.
+      4. Overwrite the full dataset back to S3.
+      5. Optionally register/update the Glue Data Catalog table.
 
     Parameters
     ----------
@@ -85,7 +198,7 @@ def append_event_to_s3_bronze(event_data: dict, kafka_offset: int) -> None:
     ingestion_timestamp = datetime.now(brasilia_tz)
     execution_id = f"stream_{ingestion_timestamp.strftime('%Y%m%dT%H%M%SZ')}_offset{kafka_offset}"
 
-    row = {
+    new_row = pd.DataFrame([{
         # Business columns
         "ano": event_data.get("ano"),
         "sigla_uf": event_data.get("sigla_uf"),
@@ -110,20 +223,21 @@ def append_event_to_s3_bronze(event_data: dict, kafka_offset: int) -> None:
         "_ingestion_timestamp_utc": ingestion_timestamp.isoformat(),
         "_ingestion_date": ingestion_timestamp.date().isoformat(),
         "_execution_id": execution_id,
-    }
+    }])
 
-    df = pd.DataFrame([row])
+    # 1. Read existing dataset
+    existing_df = read_existing_bronze(s3_bronze_path)
 
-    wr.s3.to_parquet(
-        df=df,
-        path=s3_bronze_path,
-        dataset=True,
-        mode="append",
-        partition_cols=["_ingestion_date"],
-        compression="snappy",
+    # 2. Merge new row (deduplicates on natural key)
+    merged_df = merge_event_into_dataset(existing_df, new_row)
+
+    # 3. Overwrite full dataset (+ optional Glue registration)
+    write_bronze_to_s3(merged_df, s3_bronze_path)
+
+    print(
+        f"S3 Bronze updated: {s3_bronze_path} | "
+        f"total_rows={len(merged_df)} | execution_id={execution_id}"
     )
-
-    print(f"Appended event to S3 Bronze: {s3_bronze_path} | execution_id={execution_id}")
 
 def main():
     # Connect to Kafka with retry logic
