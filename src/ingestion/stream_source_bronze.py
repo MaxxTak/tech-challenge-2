@@ -26,6 +26,8 @@ db_database = os.getenv("DB_DATABASE", "tech")
 
 # Get AWS / S3 settings
 aws_region = os.getenv("AWS_REGION", "us-east-1")
+aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID", "")
+aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY", "")
 aws_bucket = os.getenv("AWS_BUCKET", "")
 project_environment = os.getenv("PROJECT_ENVIRONMENT", "dev")
 bronze_base_path = os.getenv("BRONZE_BASE_PATH", "bronze")
@@ -37,8 +39,13 @@ s3_bronze_path = (
     f"s3://{aws_bucket}/{project_environment}/{bronze_base_path}/{bronze_target_name}/"
 )
 
-# Configure boto3 session for awswrangler
-boto3.setup_default_session(region_name=aws_region)
+# Configure boto3 session for awswrangler — explicit credentials ensure the
+# session works both locally (via .env) and inside Docker containers.
+boto3.setup_default_session(
+    region_name=aws_region,
+    aws_access_key_id=aws_access_key_id or None,
+    aws_secret_access_key=aws_secret_access_key or None,
+)
 
 def deserialize_value(value):
     if value is None:
