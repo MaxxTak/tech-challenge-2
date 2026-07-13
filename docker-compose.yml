@@ -89,10 +89,15 @@ services:
             DB_DATABASE: "tech"
             # AWS / S3 — override these with real values in .env or CI secrets
             AWS_REGION: "${AWS_REGION:-us-east-1}"
+            AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
+            AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+            AWS_SESSION_TOKEN: "${AWS_SESSION_TOKEN:-}"
             AWS_BUCKET: "${AWS_BUCKET:-}"
             PROJECT_ENVIRONMENT: "${PROJECT_ENVIRONMENT:-dev}"
             BRONZE_BASE_PATH: "${BRONZE_BASE_PATH:-bronze}"
             BRONZE_TARGET_NAME: "${BRONZE_TARGET_NAME:-uf}"
+            BRONZE_DATABASE_NAME: "${BRONZE_DATABASE_NAME:-bronze}"
+            REGISTER_CATALOG: "${REGISTER_CATALOG:-false}"
         networks:
             - tech2
 
