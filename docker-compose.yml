@@ -69,6 +69,38 @@ services:
         networks:
             - tech2
 
+    stream-source-bronze:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        container_name: stream_source_bronze
+        restart: unless-stopped
+        depends_on:
+            broker:
+                condition: service_started
+            database:
+                condition: service_started
+        environment:
+            KAFKA_BOOTSTRAP_SERVERS: "broker:29092"
+            DB_HOST: "database"
+            DB_PORT: 3306
+            DB_USER: "root"
+            DB_PASSWORD: "password"
+            DB_DATABASE: "tech"
+            # AWS / S3 — override these with real values in .env or CI secrets
+            AWS_REGION: "${AWS_REGION:-us-east-1}"
+            AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
+            AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+            AWS_SESSION_TOKEN: "${AWS_SESSION_TOKEN:-}"
+            AWS_BUCKET: "${AWS_BUCKET:-}"
+            PROJECT_ENVIRONMENT: "${PROJECT_ENVIRONMENT:-dev}"
+            BRONZE_BASE_PATH: "${BRONZE_BASE_PATH:-bronze}"
+            BRONZE_TARGET_NAME: "${BRONZE_TARGET_NAME:-uf}"
+            BRONZE_DATABASE_NAME: "${BRONZE_DATABASE_NAME:-bronze}"
+            REGISTER_CATALOG: "${REGISTER_CATALOG:-false}"
+        networks:
+            - tech2
+
 volumes:
     db_data_challenge:
 
