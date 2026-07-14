@@ -1,5 +1,13 @@
 # tech-challenge-2
 
+## Links de referência
+
+[Vídeo Executivo do Projeto](https://youtu.be/DgmiN3vu5GU)
+
+[Slides Executivo](https://docs.google.com/presentation/d/1Yhx7wJ3zX0em5IRES5e5zIRBpaqUFFkMP5kn961JWZA/edit?usp=sharing)
+
+[Vídeo - Provas de funcionamento da ingestão](https://youtu.be/i3YrLHyBhYQ)
+
 ## Contexto do problema
 
 A alfabetização na infância é um dos principais indicadores de desenvolvimento educacional. No contexto do **Compromisso Nacional Criança Alfabetizada**, o desafio é acompanhar a evolução da alfabetização no Brasil e comparar resultados com metas nacionais, estaduais e municipais.
