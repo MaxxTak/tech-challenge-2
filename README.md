@@ -461,6 +461,13 @@ pip install -r requirements.txt
 ```bash
 python src/ingestion/ingest_bronze_batch.py --register-catalog
 ```
+
+#### Vídeo demonstrativo
+
+<a href="https://www.youtube.com/watch?v=cDlRuEnrbEQ">
+  <img src="snapshot-batch.png" alt="Assista no YouTube" width="300">
+</a>
+
 Obs: para ingestão bronze via streaming (kafka), é necessário seguir os passos na seção seguinte (Ingestão via Kafka).
 ### Transformações Silver
 
@@ -543,3 +550,8 @@ Acesse o Banco de dados e verifique se o dado foi inserido conforme o json acima
 
 Para validação é possível ver no athena e também no mysql o dado inserido (ainda como camada bronze.)
 
+#### Vídeo demonstrativo
+
+<a href="https://www.youtube.com/watch?v=GbczyVEbczY">
+  <img src="snapshot-kafka.png" alt="Assista no YouTube" width="300">
+</a>
