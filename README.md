@@ -453,7 +453,7 @@ pip install -r requirements.txt
 ```bash
 python src/ingestion/ingest_bronze_batch.py --register-catalog
 ```
-
+Obs: para ingestão bronze via streaming (kafka), é necessário seguir os passos na seção seguinte (Ingestão via Kafka).
 ### Transformações Silver
 
 ```bash
@@ -473,16 +473,19 @@ python src/athena/run_sql_folder.py --folder sql/quality --clean-output-paths
 ```
 
 
-## Subir Docker containers
+## Ingestão via Kafka
 Instale o docker (docker server também ou docker desktop) e o docker-compose;
 
-rode o comando:
+Renomeie o .env.example para .env e preencha com as credenciais da AWS.
+
+Em seguida, rode o comando:
 - docker-compose up -d --build
 
 Os seguintes containers serão criados:
-![containers.png](containers.png)
+![container.png](container.png)
 
 ### Database
+Adicionalmente, foi criado um banco de dados no mysql onde também foram armazenados os dados para o desenvolvimento local.
 Acesse o banco de dados:
 
 1. HOST: localhost
@@ -527,7 +530,8 @@ Mensagem de exemplo para body:
   }
 ````
 
-Depois execute o `stream_source_bronze.ipynb` para consumir o evento.
-
+Com o container rodando o serviço `stream_source_bronze`, o evento será consumido e inserido no parquet da aws e também na base de dados do mysql.
 Acesse o Banco de dados e verifique se o dado foi inserido conforme o json acima.
+
+Para validação é possível ver no athena e também no mysql o dado inserido (ainda como camada bronze.)
 
